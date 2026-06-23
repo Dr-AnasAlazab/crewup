@@ -1,7 +1,14 @@
 /** @format */
 
 import React from "react";
+import Navbar from "../components/Navbar";
+import Hero from "../components/Hero";
 
 export default function home() {
-  return <div>home</div>;
+  return (
+    <main className="">
+      <Navbar />
+      <Hero />
+    </main>
+  );
 }

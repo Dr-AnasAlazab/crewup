@@ -1,3 +1,5 @@
+/** @format */
+
 @import "tailwindcss";
 
 :root {
@@ -7,17 +9,53 @@
 
 @theme inline {
   --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  /* --color-foreground: var(--foreground); */
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  --color-snow-50: #ffe5ee;
+  --color-snow-100: #ffccdd;
+  --color-snow-200: #ff99bb;
+  --color-snow-300: #ff6699;
+  --color-snow-400: #ff3377;
+  --color-snow-500: #ff0055;
+  --color-snow-600: #cc0044;
+  --color-snow-700: #990033;
+  --color-snow-800: #660022;
+  --color-snow-900: #330011;
+  --color-snow-950: #24000c;
+
+  --color-full-blue-50: #e6efff;
+  --color-full-blue-100: #cce0ff;
+  --color-full-blue-200: #9ac0fe;
+  --color-full-blue-300: #67a1fe;
+  --color-full-blue-400: #3481fe;
+  --color-full-blue-500: #0162fe;
+  --color-full-blue-600: #014ecb;
+  --color-full-blue-700: #013b98;
+  --color-full-blue-800: #012765;
+  --color-full-blue-900: #001433;
+  --color-full-blue-950: #000e24;
+
+  --color-graphite-50: #f2f3f2;
+  --color-graphite-100: #e6e6e5;
+  --color-graphite-200: #cdceca;
+  --color-graphite-300: #b3b5b0;
+  --color-graphite-400: #9a9c96;
+  --color-graphite-500: #81837c;
+  --color-graphite-600: #676963;
+  --color-graphite-700: #4d4f4a;
+  --color-graphite-800: #343531;
+  --color-graphite-900: #1a1a19;
+  --color-graphite-950: #121211;
 }
 
-@media (prefers-color-scheme: dark) {
+/* @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
   }
-}
+} */
 
 body {
   background: var(--background);
