@@ -3,11 +3,9 @@
 
 import { redirect } from "next/navigation";
 import { serverSupabase } from "../lib/supabase/server";
+import { SubcontractorUI } from "@/types";
 
 // Simple helper to safely turn human dates like "Apr 15, 2024" into "2024-04-15"
-
-const supabase = await serverSupabase();
-
 function convertToISODate(dateStr: string): string | null {
   const timestamp = Date.parse(dateStr);
   if (isNaN(timestamp)) return null; // Fallback if parsing fails (e.g., "ASAP")
@@ -38,7 +36,7 @@ export async function createPost(formData: FormData) {
   const budgetMinRaw = formData.get("budget_min") as string; // Reads "$34,566"
   const budgetMaxRaw = formData.get("budget_max") as string; // Reads "$34,556"
 
-  // 2. Strip out "$" and "," using regex, then convert to a clean number
+  // Strip out "$" and "," using regex, then convert to a clean number
   const budget_min = budgetMinRaw
     ? parseFloat(budgetMinRaw.replace(/[$,]/g, ""))
     : null; // Converts to 34566
@@ -46,16 +44,8 @@ export async function createPost(formData: FormData) {
     ? parseFloat(budgetMaxRaw.replace(/[$,]/g, ""))
     : null; // Converts to 34556
 
-  // Fix 3: Extract, split, and format timelines to valid Postgres dates (YYYY-MM-DD)
-  // const timeline = formData.get("timeline") as string;
   const timelineStart = formData.get("timeline_start") as string | null;
   const timelineEnd = formData.get("timeline_end") as string | null;
-
-  // if (timeline && timeline.includes(" - ")) {
-  //   const dates = timeline.split(" - ");
-  //   timelineStart = convertToISODate(dates[0].trim());
-  //   timelineEnd = convertToISODate(dates[1].trim());
-  // }
 
   // Basic validation check before touching production database
   if (!title || !location || !project_type) {
@@ -64,7 +54,7 @@ export async function createPost(formData: FormData) {
 
   try {
     // 3. Insert into public.projects
-    const { data, error } = await supabase.from("projects").insert([
+    const { error } = await supabase.from("projects").insert([
       {
         owner_id: userId,
         title,
@@ -103,14 +93,25 @@ export async function getTrades() {
   return data?.map((row) => row.trade) || [];
 }
 
-export async function getProjects() {
+export async function getProjects({ searchParams }: { searchParams: string }) {
   const supabase = await serverSupabase();
 
   // Fetch all projects AND their respective proposal counts together
-  const { data, error } = await supabase.from("projects").select(`
+  let query = supabase.from("projects").select(`
       *,
       proposals:proposals(count)
     `);
+
+  // 2. Conditionally apply the case-insensitive substring search filters
+  if (searchParams) {
+    query = query.or(
+      `title.ilike.%${searchParams}%,location.ilike.%${searchParams}%`,
+    );
+  }
+  console.log("Supabase Query Result:", searchParams);
+
+  // 3. Execute the query ONCE at the end
+  const { data, error } = await query;
 
   if (error) {
     console.error("Database Error:", error.message);
@@ -118,13 +119,16 @@ export async function getProjects() {
   }
 
   // Map the data so your frontend gets a clean 'proposalsCount' integer automatically
-  return data.map((project) => ({
+  return (data || []).map((project) => ({
     ...project,
     proposalsCount: project.proposals?.[0]?.count || 0,
   }));
 }
 
 export async function getProposalsByProjectId(projectId: string) {
+  // Fix: Safe local instantiation
+  const supabase = await serverSupabase();
+
   const { data, error } = await supabase
     .from("proposals")
     .select("*")
@@ -134,4 +138,89 @@ export async function getProposalsByProjectId(projectId: string) {
     throw new Error(`Database error: ${error.message}`);
   }
   return data;
+}
+
+export async function getProjectById(id: string) {
+  // Fix: Safe local instantiation
+  const supabase = await serverSupabase();
+
+  const { data, error } = await supabase
+    .from("projects")
+    .select(
+      `
+      *,
+      proposals:proposals(count)
+    `,
+    )
+    .eq("id", id)
+    .single(); // Tells Supabase to return exactly 1 object instead of an array
+
+  console.log("Supabase Query Result for Project ID:", id, data);
+  if (error) {
+    console.error("Error fetching project:", error.message);
+    return null;
+  }
+
+  if (!data) return null;
+
+  // Flatten the proposals structure just like we did in the search page
+  return {
+    ...data,
+    proposalsCount: data.proposals?.[0]?.count || 0,
+  };
+}
+
+// Assuming standard Supabase client initialization. Adjust if using @supabase/ssr
+
+export async function getSubcontractors(): Promise<SubcontractorUI[]> {
+  const supabase = await serverSupabase();
+  const { data: profiles, error } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("role", "subcontractor");
+
+  if (error) {
+    console.error("Error fetching subcontractors:", error);
+    return [];
+  }
+
+  // Map over the results and inject the UI-required mock data
+  return profiles.map((profile) => ({
+    ...profile,
+    // Provide fallbacks for UI consistency if DB fields are null
+    company_name:
+      profile.company_name || profile.full_name || "Unknown Company",
+    bio:
+      profile.bio ||
+      "Specializing in residential and commercial projects with a focus on quality.",
+    location: profile.location || "Dallas, TX",
+
+    // Injected mock data for missing UI fields
+    trades:
+      profile.trades ||
+      ["Concrete", "Framing", "Electrical"]
+        .sort(() => 0.5 - Math.random())
+        .slice(0, 2),
+    is_licensed:
+      profile.is_licensed !== undefined
+        ? profile.is_licensed
+        : Math.random() > 0.1, // 90% chance to be true
+    is_insured:
+      profile.is_insured !== undefined
+        ? profile.is_insured
+        : Math.random() > 0.1,
+    rating:
+      profile.rating !== undefined
+        ? profile.rating
+        : Number((Math.random() * (5.0 - 4.0) + 4.0).toFixed(1)), // Ratings between 4.0 and 5.0
+    review_count:
+      profile.review_count !== undefined
+        ? profile.review_count
+        : Math.floor(Math.random() * 50) + 5,
+    portfolio_images: profile.portfolio_images || [
+      "https://images.unsplash.com/photo-1541888086425-d81bb19240f5?auto=format&fit=crop&q=80&w=150&h=100",
+      "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&q=80&w=150&h=100",
+      "https://images.unsplash.com/photo-1589939705384-5185137a7f0f?auto=format&fit=crop&q=80&w=150&h=100",
+    ],
+  }));
 }
