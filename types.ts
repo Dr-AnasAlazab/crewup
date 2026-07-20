@@ -22,3 +22,26 @@ export interface Project {
     count: number;
   }[];
 }
+
+export interface Profile {
+  id: string;
+  full_name: string;
+  email: string | null;
+  phone: string | null;
+  avatar_url: string | null;
+  role: "contractor" | "subcontractor";
+  company_name: string | null;
+  location: string | null;
+  bio: string | null;
+  website: string | null;
+  created_at: string;
+}
+
+export interface SubcontractorUI extends Profile {
+  trades: string[];
+  is_licensed: boolean;
+  is_insured: boolean;
+  rating: number;
+  review_count: number;
+  portfolio_images: string[];
+}
