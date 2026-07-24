@@ -41,7 +41,22 @@ export interface SubcontractorUI extends Profile {
   trades: string[];
   is_licensed: boolean;
   is_insured: boolean;
+  is_bonded: boolean;
+  years_in_business: number;
+  available_now: string;
   rating: number;
   review_count: number;
   portfolio_images: string[];
+}
+
+export interface FindContractorsPageParams {
+  trade: string[];
+  location: string;
+  licensed: boolean;
+  insured: boolean;
+  bonded: boolean;
+  rating: string;
+  yearsInBusiness: number;
+  availableNow: boolean;
+  availableForUpcomingProjects: boolean;
 }
