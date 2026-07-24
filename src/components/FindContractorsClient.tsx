@@ -11,10 +11,12 @@ import Pagination from "./Pagination";
 
 interface FindContractorsClientProps {
   initialData: SubcontractorUI[];
+  trades: string[];
 }
 
 export default function FindContractorsClient({
   initialData,
+  trades,
 }: FindContractorsClientProps) {
   // Setup local state for filtering/pagination later
   const [contractors, setContractors] =
@@ -31,7 +33,7 @@ export default function FindContractorsClient({
         </div>
 
         <aside className="hidden lg:block">
-          <ContractorFilterSidebar />
+          <ContractorFilterSidebar trades={trades} />
         </aside>
       </div>
     </div>

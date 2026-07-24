@@ -3,7 +3,7 @@
 
 import { redirect } from "next/navigation";
 import { serverSupabase } from "../lib/supabase/server";
-import { SubcontractorUI } from "@/types";
+import { SubcontractorUI, type FindContractorsPageParams } from "@/types";
 
 // Simple helper to safely turn human dates like "Apr 15, 2024" into "2024-04-15"
 function convertToISODate(dateStr: string): string | null {
@@ -90,7 +90,11 @@ export async function getTrades() {
     console.error("Database Error:", error.message);
     throw new Error(`Database error: ${error.message}`);
   }
-  return data?.map((row) => row.trade) || [];
+  return (
+    data?.map((row) => {
+      return row.trade;
+    }) || []
+  );
 }
 
 export async function getProjects({ searchParams }: { searchParams: string }) {
@@ -170,57 +174,116 @@ export async function getProjectById(id: string) {
   };
 }
 
-// Assuming standard Supabase client initialization. Adjust if using @supabase/ssr
-
-export async function getSubcontractors(): Promise<SubcontractorUI[]> {
+export async function getSubcontractors(
+  params: FindContractorsPageParams,
+): Promise<SubcontractorUI[]> {
   const supabase = await serverSupabase();
-  const { data: profiles, error } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("role", "subcontractor");
+
+  let query = supabase.from("profiles").select("*").eq("role", "subcontractor");
+
+  if (params.licensed) query = query.eq("is_licensed", true);
+  if (params.insured) query = query.eq("is_insured", true);
+  if (params.bonded) query = query.eq("is_bonded", true);
+  if (params.availableNow) query = query.eq("available_now", true);
+  if (params.availableForUpcomingProjects)
+    query = query.eq("available_upcoming", true);
+
+  if (params.location?.trim()) {
+    query = query.ilike("location", `%${params.location.trim()}%`);
+  }
+
+  if (params.rating) {
+    const minmum = Number(params.rating);
+    if (!isNaN(minmum)) {
+      query = query.gte("rating", minmum);
+    }
+  }
+
+  if (params.yearsInBusiness) {
+    const ranges: Record<string, { gte?: number; lte?: number }> = {
+      "1-3": { gte: 1, lte: 3 },
+      "3-5": { gte: 3, lte: 5 },
+      "5-10": { gte: 5, lte: 10 },
+      "10+": { gte: 10 },
+    };
+    const range = ranges[params.yearsInBusiness];
+    if (range) {
+      if (range.gte !== undefined)
+        query = query.gte("years_in_business", range.gte);
+      if (range.lte !== undefined)
+        query = query.lte("years_in_business", range.lte);
+    }
+  }
+
+  // ── Apply Trade filter BEFORE executing the query ──
+  if (params.trade) {
+    query = query.contains("trades", [params.trade]);
+  }
+  console.log("Supabase Query Result for Subcontractors:", [params.trade]);
+
+  // ── NOW execute the query ──────────────────────────
+  const { data, error } = await query;
 
   if (error) {
-    console.error("Error fetching subcontractors:", error);
+    console.error("[getSubcontractors]", error.message);
     return [];
   }
 
-  // Map over the results and inject the UI-required mock data
-  return profiles.map((profile) => ({
-    ...profile,
-    // Provide fallbacks for UI consistency if DB fields are null
-    company_name:
-      profile.company_name || profile.full_name || "Unknown Company",
-    bio:
-      profile.bio ||
-      "Specializing in residential and commercial projects with a focus on quality.",
-    location: profile.location || "Dallas, TX",
-
-    // Injected mock data for missing UI fields
-    trades:
-      profile.trades ||
-      ["Concrete", "Framing", "Electrical"]
-        .sort(() => 0.5 - Math.random())
-        .slice(0, 2),
-    is_licensed:
-      profile.is_licensed !== undefined
-        ? profile.is_licensed
-        : Math.random() > 0.1, // 90% chance to be true
-    is_insured:
-      profile.is_insured !== undefined
-        ? profile.is_insured
-        : Math.random() > 0.1,
-    rating:
-      profile.rating !== undefined
-        ? profile.rating
-        : Number((Math.random() * (5.0 - 4.0) + 4.0).toFixed(1)), // Ratings between 4.0 and 5.0
-    review_count:
-      profile.review_count !== undefined
-        ? profile.review_count
-        : Math.floor(Math.random() * 50) + 5,
-    portfolio_images: profile.portfolio_images || [
-      "https://images.unsplash.com/photo-1541888086425-d81bb19240f5?auto=format&fit=crop&q=80&w=150&h=100",
-      "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&q=80&w=150&h=100",
-      "https://images.unsplash.com/photo-1589939705384-5185137a7f0f?auto=format&fit=crop&q=80&w=150&h=100",
-    ],
-  }));
+  return data;
 }
+
+// export async function getSubcontractors(
+//   params: FindContractorsPageParams,
+// ): Promise<SubcontractorUI[]> {
+//   const supabase = await serverSupabase();
+
+//   const { data: profiles, error } = await supabase
+//     .from("profiles")
+//     .select("*")
+//     .eq("role", "subcontractor");
+
+//   if (error) {
+//     console.error("Error fetching subcontractors:", error);
+//     return [];
+//   }
+
+//   // Map over the results and inject the UI-required mock data
+//   return profiles.map((profile) => ({
+//     ...profile,
+//     // Provide fallbacks for UI consistency if DB fields are null
+//     company_name:
+//       profile.company_name || profile.full_name || "Unknown Company",
+//     bio:
+//       profile.bio ||
+//       "Specializing in residential and commercial projects with a focus on quality.",
+//     location: profile.location || "Dallas, TX",
+
+//     // Injected mock data for missing UI fields
+//     trades:
+//       profile.trades ||
+//       ["Concrete", "Framing", "Electrical"]
+//         .sort(() => 0.5 - Math.random())
+//         .slice(0, 2),
+//     is_licensed:
+//       profile.is_licensed !== undefined
+//         ? profile.is_licensed
+//         : Math.random() > 0.1, // 90% chance to be true
+//     is_insured:
+//       profile.is_insured !== undefined
+//         ? profile.is_insured
+//         : Math.random() > 0.1,
+//     rating:
+//       profile.rating !== undefined
+//         ? profile.rating
+//         : Number((Math.random() * (5.0 - 4.0) + 4.0).toFixed(1)), // Ratings between 4.0 and 5.0
+//     review_count:
+//       profile.review_count !== undefined
+//         ? profile.review_count
+//         : Math.floor(Math.random() * 50) + 5,
+//     portfolio_images: profile.portfolio_images || [
+//       "https://images.unsplash.com/photo-1541888086425-d81bb19240f5?auto=format&fit=crop&q=80&w=150&h=100",
+//       "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&q=80&w=150&h=100",
+//       "https://images.unsplash.com/photo-1589939705384-5185137a7f0f?auto=format&fit=crop&q=80&w=150&h=100",
+//     ],
+//   }));
+// }
