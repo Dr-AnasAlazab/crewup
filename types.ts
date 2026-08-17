@@ -48,6 +48,10 @@ export interface SubcontractorUI extends Profile {
   review_count: number;
   portfolio_images: string[];
 }
+export interface GetSubcontractorsResponse {
+  contractors: SubcontractorUI[];
+  totalCount: number;
+}
 
 export interface FindContractorsPageParams {
   trade: string[];
@@ -59,4 +63,43 @@ export interface FindContractorsPageParams {
   yearsInBusiness: number;
   availableNow: boolean;
   availableForUpcomingProjects: boolean;
+  page: number;
+  pageSize: number;
+  search: string;
+}
+
+export interface ParticipantUI {
+  id: string;
+  first_name: string;
+  last_name: string;
+  company_name: string | null;
+  avatar_url: string | null;
+  is_online?: boolean; // For future realtime presence
+}
+
+export interface AttachmentUI {
+  id: string;
+  file_name: string;
+  file_size: number; // in bytes
+  file_url: string;
+  file_type: string;
+}
+
+export interface MessageUI {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  text: string | null;
+  created_at: string;
+  is_read: boolean;
+  sender: ParticipantUI;
+  attachments?: AttachmentUI[];
+}
+
+export interface ConversationUI {
+  id: string;
+  participant: ParticipantUI;
+  latest_message: Pick<MessageUI, "text" | "created_at" | "sender_id"> | null;
+  unread_count: number;
+  updated_at: string;
 }

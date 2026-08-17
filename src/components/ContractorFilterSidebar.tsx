@@ -31,6 +31,9 @@ export default function ContractorFilterSidebar({
     availableNow: searchParams.get("availableNow") === "true",
     availableForUpcomingProjects:
       searchParams.get("availableForUpcomingProjects") === "true",
+    search: searchParams.get("search"),
+    page: searchParams.get("page") || 1,
+    pageSize: searchParams.get("pageSize") || 5,
   });
 
   // 1. Initialize state with current URL search params
@@ -54,11 +57,16 @@ export default function ContractorFilterSidebar({
     });
 
     replace(`${pathname}?${newParams.toString()}`, { scroll: false });
-    router.refresh();
   };
 
   // 4. Handler to Clear all Filters
   const handleClearFilters = () => {
+    const newParams = new URLSearchParams();
+
+    newParams.set("search", searchParams.get("search") ?? "");
+    newParams.set("page", searchParams.get("page") ?? "1");
+    newParams.set("pageSize", searchParams.get("pageSize") ?? "5");
+
     setFilterItems({
       trade: "",
       location: "",
@@ -69,9 +77,14 @@ export default function ContractorFilterSidebar({
       yearsInBusiness: "",
       availableNow: false,
       availableForUpcomingProjects: false,
+      search: searchParams.get("search") ?? "",
+      page: Number(searchParams.get("page") ?? 1),
+      pageSize: Number(searchParams.get("pageSize") ?? 5),
     });
 
-    router.push(pathname, { scroll: false });
+    replace(`${pathname}?${newParams.toString()}`, {
+      scroll: false,
+    });
   };
 
   return (
@@ -80,7 +93,7 @@ export default function ContractorFilterSidebar({
         <h3 className="font-bold text-slate-900">Filter Results</h3>
         <button
           onClick={handleClearFilters}
-          className="text-sm font-semibold text-blue-600 hover:text-blue-700"
+          className="text-sm cursor-pointer font-semibold text-blue-600 hover:text-blue-700"
         >
           Clear all
         </button>
@@ -279,7 +292,7 @@ export default function ContractorFilterSidebar({
         {/* Apply Button */}
         <button
           onClick={handleApplyFilters}
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg transition-colors mt-2"
+          className="w-full cursor-pointer bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg transition-colors mt-2"
         >
           Apply Filters
         </button>
