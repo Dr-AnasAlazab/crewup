@@ -1,6 +1,7 @@
 /** @format */
 
 import { Search, Bell, ChevronDown } from "lucide-react";
+import Searchbar from "./Searchbar";
 
 export default function ContractorTopBar() {
   return (
@@ -37,7 +38,8 @@ export default function ContractorTopBar() {
         </div>
       </div>
 
-      {/* Search & Global Filters */}
+      <Searchbar />
+      {/* Search & Global Filters
       <div className="flex flex-col md:flex-row gap-4">
         <div className="relative flex-1">
           <Search
@@ -76,7 +78,7 @@ export default function ContractorTopBar() {
             Search
           </button>
         </div>
-      </div>
+      </div> */}
     </div>
   );
 }

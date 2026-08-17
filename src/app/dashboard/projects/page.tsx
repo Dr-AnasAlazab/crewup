@@ -4,6 +4,7 @@ import { Plus, ChevronDown } from "lucide-react";
 import { getProjects } from "@/src/actions/dataActions";
 import type { Project } from "@/types";
 import Searchbar from "@/src/components/Searchbar";
+import ProjectList from "@/src/components/ProjectList";
 
 export default async function GlobalProjectsPage({
   searchParams,
@@ -56,7 +57,10 @@ export default async function GlobalProjectsPage({
       {/* ── Two-Column Workspace ── */}
       <div className="p-8 grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6 items-start">
         {/* LEFT COLUMN: Search, Filters & Project Feed */}
-        <Searchbar projects={projects} />
+        <div className="flex flex-col gap-5">
+          <Searchbar />
+          <ProjectList projects={projects} />
+        </div>
 
         {/* RIGHT COLUMN: Side Analytics View */}
         <div className="flex flex-col gap-6">

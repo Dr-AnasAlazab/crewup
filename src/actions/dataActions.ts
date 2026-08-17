@@ -3,7 +3,13 @@
 
 import { redirect } from "next/navigation";
 import { serverSupabase } from "../lib/supabase/server";
-import { SubcontractorUI, type FindContractorsPageParams } from "@/types";
+import {
+  SubcontractorUI,
+  type ConversationUI,
+  type FindContractorsPageParams,
+  type GetSubcontractorsResponse,
+  type MessageUI,
+} from "@/types";
 
 // Simple helper to safely turn human dates like "Apr 15, 2024" into "2024-04-15"
 function convertToISODate(dateStr: string): string | null {
@@ -112,7 +118,6 @@ export async function getProjects({ searchParams }: { searchParams: string }) {
       `title.ilike.%${searchParams}%,location.ilike.%${searchParams}%`,
     );
   }
-  console.log("Supabase Query Result:", searchParams);
 
   // 3. Execute the query ONCE at the end
   const { data, error } = await query;
@@ -176,10 +181,25 @@ export async function getProjectById(id: string) {
 
 export async function getSubcontractors(
   params: FindContractorsPageParams,
-): Promise<SubcontractorUI[]> {
+): Promise<GetSubcontractorsResponse> {
   const supabase = await serverSupabase();
+  console.log("Params.page", params.page);
+  const page = Number(params.page ?? 1);
+  const pageSize = Number(params.pageSize ?? 5);
 
-  let query = supabase.from("profiles").select("*").eq("role", "subcontractor");
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  let query = supabase
+    .from("profiles")
+    .select("*", { count: "exact" })
+    .eq("role", "subcontractor");
+
+  if (params.search) {
+    query = query.or(
+      `company_name.ilike.%${params.search}%,location.ilike.%${params.search}%`,
+    );
+  }
 
   if (params.licensed) query = query.eq("is_licensed", true);
   if (params.insured) query = query.eq("is_insured", true);
@@ -215,21 +235,25 @@ export async function getSubcontractors(
     }
   }
 
-  // ── Apply Trade filter BEFORE executing the query ──
-  if (params.trade) {
-    query = query.contains("trades", [params.trade]);
+  if (params.page) {
+    query = query.range(from, to);
   }
-  console.log("Supabase Query Result for Subcontractors:", [params.trade]);
-
   // ── NOW execute the query ──────────────────────────
-  const { data, error } = await query;
+
+  const { data, error, count } = await query;
 
   if (error) {
     console.error("[getSubcontractors]", error.message);
-    return [];
+    return {
+      contractors: [],
+      totalCount: 0,
+    };
   }
 
-  return data;
+  return {
+    contractors: data ?? [],
+    totalCount: count ?? 0,
+  };
 }
 
 // export async function getSubcontractors(
@@ -287,3 +311,298 @@ export async function getSubcontractors(
 //     ],
 //   }));
 // }
+
+/**
+ * Fetches all conversations for the authenticated user, complete with
+ * participant details, latest message, and unread calculations based on last_read_at.
+ */
+export async function getConversations(
+  userId: string,
+): Promise<ConversationUI[]> {
+  const supabase = await serverSupabase();
+
+  // 1. Fetch conversation entries where the current user is a participant
+  const { data, error } = await supabase
+    .from("conversation_participants")
+    .select(
+      `
+      last_read_at,
+      conversation:conversations (
+        id,
+        updated_at,
+        last_message_at,
+        last_message:messages!conversations_last_message_fkey (
+          id,
+          content,
+          created_at,
+          sender_id
+        ),
+        participants:conversation_participants (
+          user_id,
+          profile:profiles!conversation_participants_user_id_fkey (
+            id,
+            full_name,
+            avatar_url
+          )
+        )
+      )
+    `,
+    )
+    .eq("user_id", userId);
+
+  if (error) {
+    console.error("[getConversations] Error:", error.message);
+    return [];
+  }
+
+  if (!data) return [];
+
+  // 2. Transform DB payload into UI model
+  console.log("messages", data);
+  const conversations: ConversationUI[] = data
+    .filter((row) => row.conversation !== null)
+    .map((row) => {
+      const conv = row.conversation as any;
+      const userLastReadAt = row.last_read_at
+        ? new Date(row.last_read_at)
+        : new Date(0);
+
+      // Identify the other participant in the conversation
+      const otherParticipantObj = conv.participants?.find(
+        (p: any) => p.user_id !== userId,
+      );
+      const otherProfile = otherParticipantObj?.profile || {};
+
+      // Split full_name safely into first_name and last_name for the UI contract
+      const fullName = otherProfile.full_name || "Unknown User";
+      const nameParts = fullName.trim().split(" ");
+      const firstName = nameParts[0] || "Unknown";
+      const lastName = nameParts.slice(1).join(" ") || "";
+
+      // Determine unread status from last_read_at vs latest message timestamp
+      const latestMessage = conv.last_message;
+      let unreadCount = 0;
+
+      if (latestMessage && latestMessage.sender_id !== userId) {
+        const lastMsgTime = new Date(latestMessage.created_at);
+        if (lastMsgTime > userLastReadAt) {
+          unreadCount = 1; // Flag as unread if latest message arrived after last_read_at
+        }
+      }
+
+      return {
+        id: conv.id,
+        participant: {
+          id: otherProfile.id || "unknown",
+          first_name: firstName,
+          last_name: lastName,
+          company_name: null,
+          avatar_url: otherProfile.avatar_url || null,
+        },
+        latest_message: latestMessage
+          ? {
+              text: latestMessage.content,
+              created_at: latestMessage.created_at,
+              sender_id: latestMessage.sender_id,
+            }
+          : null,
+        unread_count: unreadCount,
+        updated_at: conv.last_message_at || conv.updated_at,
+      };
+    });
+
+  // Sort by latest activity descending
+  return conversations.sort(
+    (a, b) =>
+      new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
+  );
+}
+
+/**
+ * Fetches messages for a given conversation and updates the user's `last_read_at` timestamp.
+ */
+export async function getMessages(
+  conversationId: string,
+  userId?: string,
+): Promise<MessageUI[]> {
+  const supabase = await serverSupabase();
+
+  // 1. Fetch active messages (ignoring soft-deleted rows)
+  const { data, error } = await supabase
+    .from("messages")
+    .select(
+      `
+      id,
+      conversation_id,
+      sender_id,
+      content,
+      file_url,
+      file_name,
+      file_size,
+      created_at,
+      sender:profiles!messages_sender_id_fkey (
+        id,
+        full_name,
+        avatar_url
+      )
+    `,
+    )
+    .eq("conversation_id", conversationId)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: true })
+    .limit(50);
+
+  if (error) {
+    console.error("[getMessages] Error:", error.message);
+    return [];
+  }
+
+  // 2. Update user's `last_read_at` pointer upon loading messages
+  if (userId) {
+    await supabase
+      .from("conversation_participants")
+      .update({ last_read_at: new Date().toISOString() })
+      .match({ conversation_id: conversationId, user_id: userId });
+  }
+
+  // 3. Transform to MessageUI structure
+  return (data || []).map((msg: any) => {
+    const fullName = msg.sender?.full_name || "Unknown";
+    const nameParts = fullName.trim().split(" ");
+
+    return {
+      id: msg.id,
+      conversation_id: msg.conversation_id,
+      sender_id: msg.sender_id,
+      text: msg.content,
+      created_at: msg.created_at,
+      is_read: true,
+      sender: {
+        id: msg.sender?.id || msg.sender_id,
+        first_name: nameParts[0] || "Unknown",
+        last_name: nameParts.slice(1).join(" ") || "",
+        company_name: null,
+        avatar_url: msg.sender?.avatar_url || null,
+      },
+      attachments: msg.file_url
+        ? [
+            {
+              id: msg.id,
+              file_name: msg.file_name || "Attachment",
+              file_size: msg.file_size || 0,
+              file_url: msg.file_url,
+              file_type: msg.file_name?.split(".").pop() || "file",
+            },
+          ]
+        : [],
+    };
+  });
+}
+
+/**
+ * Sends a message, handles file attachments stored on the row,
+ * updates the parent conversation metadata, and updates sender's read pointer.
+ */
+export async function sendMessage(formData: FormData) {
+  const supabase = await serverSupabase();
+
+  const conversationId = formData.get("conversationId") as string;
+  const senderId = formData.get("senderId") as string;
+  const content = formData.get("content") as string | null;
+  const fileUrl = formData.get("fileUrl") as string | null;
+  const fileName = formData.get("fileName") as string | null;
+  const fileSize = formData.get("fileSize")
+    ? Number(formData.get("fileSize"))
+    : null;
+
+  if (!conversationId || !senderId || (!content && !fileUrl)) {
+    throw new Error("Missing required message fields");
+  }
+
+  // 1. Insert new message
+  const { data: newMessage, error: msgError } = await supabase
+    .from("messages")
+    .insert({
+      conversation_id: conversationId,
+      sender_id: senderId,
+      content: content || null,
+      file_url: fileUrl || null,
+      file_name: fileName || null,
+      file_size: fileSize || null,
+    })
+    .select("id, created_at")
+    .single();
+
+  if (msgError) {
+    console.error("[sendMessage] Error inserting message:", msgError.message);
+    throw new Error(msgError.message);
+  }
+
+  // 2. Cascade update pointers on the parent conversation
+  const now = newMessage.created_at;
+
+  const { error: convError } = await supabase
+    .from("conversations")
+    .update({
+      last_message_id: newMessage.id,
+      last_message_at: now,
+      updated_at: now,
+    })
+    .eq("id", conversationId);
+
+  if (convError) {
+    console.error(
+      "[sendMessage] Error updating conversation pointer:",
+      convError.message,
+    );
+  }
+
+  // 3. Mark message as read for the sender
+  await supabase
+    .from("conversation_participants")
+    .update({ last_read_at: now })
+    .match({ conversation_id: conversationId, user_id: senderId });
+
+  return { success: true, messageId: newMessage.id };
+}
+
+interface AttachmentUploadProps {
+  file: File;
+  conversationId: string;
+}
+
+interface AttachmentResult {
+  fileUrl: string;
+  fileName: string;
+  fileSize: number;
+}
+
+export const chattAttachments = async ({
+  file,
+  conversationId,
+}: AttachmentUploadProps): Promise<AttachmentResult> => {
+  const supabase = await serverSupabase();
+  const fileExt = file.name.split(".").pop();
+  const filePath = `${conversationId}/${Date.now()}.${fileExt}`;
+
+  // 1. Upload to Supabase Storage
+  const { data: uploadData, error: uploadError } = await supabase.storage
+    .from("chat-attachments")
+    .upload(filePath, file);
+
+  if (uploadError) {
+    throw new Error(`File upload failed: ${uploadError.message}`);
+  }
+
+  // 2. Get the public URL
+  const { data: publicUrlData } = supabase.storage
+    .from("chat-attachments")
+    .getPublicUrl(uploadData.path);
+
+  // 3. Return the exact object TypeScript is expecting in MessageInput.tsx
+  return {
+    fileUrl: publicUrlData.publicUrl,
+    fileName: file.name,
+    fileSize: file.size,
+  };
+};
