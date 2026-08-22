@@ -606,3 +606,60 @@ export const chattAttachments = async ({
     fileSize: file.size,
   };
 };
+
+export async function getProfile(userId: string): Promise<SubcontractorUI> {
+  const supabase = await serverSupabase();
+
+  const { data, error } = await supabase
+    .from("profiles") // Make sure this matches your actual Supabase table name
+    .select("*")
+    .eq("id", userId)
+    .single();
+
+  if (error) {
+    console.error("Database Error fetching profile:", error.message);
+    throw new Error(`Database error: ${error.message}`);
+  }
+
+  return data as SubcontractorUI;
+}
+
+/**
+ * Appends a new trade/service to the user's existing trades array
+ */
+export async function addTradeService(userId: string, newTrade: string) {
+  const supabase = await serverSupabase();
+
+  // 1. Fetch the current trades array first to avoid overwriting
+  const { data: profile, error: fetchError } = await supabase
+    .from("profiles")
+    .select("trades")
+    .eq("id", userId)
+    .single();
+
+  if (fetchError) {
+    console.error("Database Error fetching trades:", fetchError.message);
+    throw new Error(`Database error: ${fetchError.message}`);
+  }
+
+  // 2. Prepare the new array (handling null cases and preventing duplicates)
+  const currentTrades = profile.trades || [];
+  if (currentTrades.includes(newTrade)) {
+    return { success: true, message: "Trade already exists" };
+  }
+
+  const updatedTrades = [...currentTrades, newTrade];
+
+  // 3. Update the database with the newly combined array
+  const { error: updateError } = await supabase
+    .from("profiles")
+    .update({ trades: updatedTrades })
+    .eq("id", userId);
+
+  if (updateError) {
+    console.error("Database Error updating trades:", updateError.message);
+    throw new Error(`Database error: ${updateError.message}`);
+  }
+
+  return { success: true };
+}
